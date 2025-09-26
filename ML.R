@@ -39,7 +39,7 @@ for (fold in 1:10) {
   # -----------------------------
   # Loop for different SNP counts
   # -----------------------------
-  for (n in seq(2, 30, by = 2)) {
+  for (n in seq(2, 20, by = 2)) {
     snp_file <- file.path(cv_dir, paste0("snp", n, ".txt"))
     if (!file.exists(snp_file)) next
     
@@ -86,65 +86,3 @@ for (fold in 1:10) {
     all_pred_list[[length(all_pred_list)+1]] <- pred_df
   }
 }
-
-# ==============================
-# Combine all test sample prediction results
-# ==============================
-all_pred <- do.call(rbind, all_pred_list)
-
-write.table(all_pred, file = "prediction_results_CV_total.txt",
-            sep = "\t", row.names = FALSE, quote = FALSE)
-
-# ==============================
-# Calculate overall metrics by model + SNP count (robust version)
-# ==============================
-summary_metrics <- lapply(unique(all_pred$num_snp), function(n_snp){
-  snp_data <- all_pred[all_pred$num_snp == n_snp, ]
-  if(nrow(snp_data) == 0) return(NULL)  # Skip empty groups
-  
-  lapply(c("KNN","SVM","RF","DT","AB"), function(m){
-    pred <- factor(snp_data[[m]], levels = unique(snp_data$group))
-    truth <- factor(snp_data$group, levels = unique(snp_data$group))
-    
-    # If there are less than 2 classes in the test set, return NA
-    if(length(levels(truth)) < 2) {
-      return(data.frame(
-        num_snp = n_snp,
-        model = m,
-        Accuracy = NA,
-        Balanced_Accuracy = NA,
-        Sensitivity = NA,
-        Specificity = NA,
-        F1 = NA
-      ))
-    }
-    
-    cm <- confusionMatrix(pred, truth)
-    
-    data.frame(
-      num_snp = n_snp,
-      model = m,
-      Accuracy = cm$overall['Accuracy'],
-      Balanced_Accuracy = mean(cm$byClass[,"Balanced Accuracy"], na.rm = TRUE),
-      Sensitivity = mean(cm$byClass[,"Sensitivity"], na.rm = TRUE),
-      Specificity = mean(cm$byClass[,"Specificity"], na.rm = TRUE),
-      F1 = mean(cm$byClass[,"F1"], na.rm = TRUE)
-    )
-  }) %>% bind_rows()
-}) %>% bind_rows()
-
-write.table(summary_metrics, file = "model_metrics_CV_total.txt",
-            sep = "\t", row.names = FALSE, quote = FALSE)
-
-# ==============================
-# Split predictions by model for each sample
-# ==============================
-for (m in c("KNN","SVM","RF","DT","AB")) {
-  pred_m <- all_pred %>%
-    select(id, num_snp, group, all_of(m))
-  
-  write.table(pred_m, file = paste0("prediction_results_", m, "_CV.txt"),
-              sep = "\t", row.names = FALSE, quote = FALSE)
-}
-
-cat("All CV folds processed. Total predictions and overall metrics saved.\n")
